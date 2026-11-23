@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>포커 용사 (Poker Hero) v2.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Press+Start+2P&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #0b0f19;
+            color: #f1f5f9;
+            user-select: none;
+            touch-action: manipulation;
+            overflow-x: hidden;
+        }
+        .pixel-font { font-family: 'Press Start 2P', monospace; }
+        
+        /* Grid Layout */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            grid-template-rows: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+            width: 100%;
+            aspect-ratio: 2/1;
+            position: relative;
+        }
+        
+        .tile {
+            position: relative;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .tile-player-zone { background-color: rgba(30, 58, 138, 0.15); }
+        .tile-enemy-zone { background-color: rgba(136, 19, 55, 0.15); }
+        
+        /* Tile Interactions */
+        .tile-atk-range { background-color: rgba(239, 68, 68, 0.4) !important; border-color: #f87171 !important; box-shadow: inset 0 0 10px rgba(239, 68, 68, 0.6); }
+        .tile-move-range { background-color: rgba(59, 130, 246, 0.4) !important; border-color: #60a5fa !important; cursor: pointer; box-shadow: inset 0 0 10px rgba(59, 130, 246, 0.6); animation: pulseMove 1s infinite alternate; }
+        .tile-enemy-danger { background-color: rgba(245, 158, 11, 0.25) !important; border-color: rgba(245, 158, 11, 0.5) !important; background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(245,158,11,0.1) 10px, rgba(245,158,11,0.1) 20px); }
+
+        @keyframes pulseMove { 0% { border-color: #3b82f6; } 100% { border-color: #93c5fd; } }
+        
+        /* Pastel Card Themes */
+        .card-atk { background: linear-gradient(135deg, #ffe4e6, #fecdd3); color: #881337; border-color: #fda4af; box-shadow: 0 4px 6px rgba(225, 29, 72, 0.2); }
+        .card-def { background: linear-gradient(135deg, #dbeafe, #bfdbfe); color: #1e3a8a; border-color: #93c5fd; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2); }
+        .card-mov { background: linear-gradient(135deg, #fef9c3, #fef08a); color: #713f12; border-color: #fde047; box-shadow: 0 4px 6px rgba(202, 138, 4, 0.2); }
+        
+        /* Rarity Text Colors */
+        .rarity-text-N { color: #475569; }
+        .rarity-text-R { color: #2563eb; }
+        .rarity-text-E { color: #9333ea; }
+        .rarity-text-L { color: #d97706; text-shadow: 0 0 5px rgba(245,158,11,0.5); }
+        
+        /* Animations */
+        @keyframes floatText {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            15% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+            30% { transform: translate(-50%, -50%) scale(1.0); }
+            80% { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); filter: blur(4px); }
+        }
+        .anim-poker-confirm { animation: floatText 2s ease-in-out forwards; }
+        
+        @keyframes damageFloat { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-30px); } }
+        .dmg-text { position: absolute; animation: damageFloat 0.8s ease-out forwards; font-weight: 900; z-index: 50; text-shadow: 0 2px 4px #000; }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-4px); }
+            40%, 80% { transform: translateX(4px); }
+        }
+        .shake { animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both; }
+        
+        .blur-grid { filter: blur(6px) brightness(0.6); pointer-events: none; transition: filter 0.5s ease; }
+        
+        /* SVG Intent Overlay */
+        #intent-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
+        .intent-path { stroke-dasharray: 8; animation: dashAnim 1s linear infinite; }
+        @keyframes dashAnim { to { stroke-dashoffset: -16; } }
+
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col p-2 gap-2 sm:gap-4 lg:p-4 text-sm">
+
+    <header class="w-full max-w-[1400px] mx-auto flex justify-between items-center bg-slate-900 border border-slate-800 rounded-xl p-3 shrink-0 shadow-lg">
+        <h1 class="text-xl font-black bg-gradient-to-r from-indigo-400 via-purple-400 to-amber-400 bg-clip-text text-transparent">
+            🃏 포커 용사 <span class="text-xs border border-slate-700 px-1.5 py-0.5 rounded ml-1 text-slate-400 font-mono">v2.0</span>
+        </h1>
+        <div class="flex gap-3 font-bold font-mono">
+            <div class="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 text-amber-400">STAGE: <span id="stage-num">1-1</span></div>
+            <div class="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 text-cyan-400">AP: <span id="ap-display">3/3</span></div>
+        </div>
+    </header>
+
+    <main class="w-full max-w-[1400px] mx-auto flex-1 flex flex-col lg:flex-row gap-4 h-full relative">
+        
+        <div class="flex-1 flex flex-col gap-4 relative w-full lg:w-2/3">
+            
+            <!-- Battle Grid Area -->
+            <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col relative shadow-2xl overflow-hidden min-h-[300px]">
+                
+                <div class="w-full flex justify-between px-2 mb-3 text-xs font-bold z-10 relative">
+                    <span class="text-blue-400">🟦 아군 진영</span>
+                    <span class="text-rose-400">🟥 적군 진영</span>
+                </div>
+                
+                <!-- SVG layer for arrows -->
+                <svg id="intent-svg">
+                    <defs>
+                        <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                            <polygon points="0 0, 6 3, 0 6" fill="#fbbf24" />
+                        </marker>
+                    </defs>
+                    <g id="svg-paths"></g>
+                </svg>
+
+                <div id="battle-grid" class="grid-container blur-grid relative z-10">
+                    <!-- Tiles rendered via JS -->
+                </div>
+
+                <!-- POKER OVERLAY (Visible during Poker phase) -->
+                <div id="poker-ui-overlay" class="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/60 rounded-2xl backdrop-blur-[2px]">
+                    <div class="bg-slate-900 border border-amber-500/50 rounded-2xl p-5 shadow-[0_0_50px_rgba(245,158,11,0.2)] flex flex-col items-center gap-4 w-[90%] max-w-sm">
+                        <h2 class="text-amber-400 font-bold tracking-widest text-sm border-b border-slate-700 w-full text-center pb-2">🎲 포커 족보 생성</h2>
+                        
+                        <div id="poker-cards" class="flex justify-center gap-2">
+                            <!-- Cards -->
+                        </div>
+                        
+                        <div class="bg-slate-950 px-4 py-2 rounded-xl border border-slate-800 text-center w-full">
+                            <div class="flex justify-center items-center gap-2 mb-1">
+                                <span id="poker-rank" class="text-amber-300 font-extrabold text-lg">하이 카드</span>
+                                <span id="poker-rarity" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-bold border border-slate-600">일반</span>
+                            </div>
+                            <div id="poker-mult" class="text-xs text-indigo-300 font-mono font-bold">효율 배율: x1.0</div>
+                        </div>
+
+                        <div class="flex gap-2 w-full mt-2">
+                            <button id="btn-redraw" onclick="redrawPokerCard()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs py-2.5 rounded-xl font-bold border border-slate-600 transition disabled:opacity-30">
+                                🔄 카드 추가 (-1 AP) <br><span id="redraw-count" class="text-[10px] text-amber-400">(0/2)</span>
+                            </button>
+                            <button id="btn-lock" onclick="lockPoker()" class="flex-1 bg-gradient-to-br from-amber-500 to-orange-600 hover:brightness-110 text-slate-900 text-sm py-2.5 rounded-xl font-black transition shadow-lg">
+                                🔒 족보 확정
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="flex gap-4">
+                
+                <!-- Deck Stacks (Left of hand) -->
+                <div class="flex flex-col gap-2 justify-center w-16 shrink-0">
+                    <button onclick="openDeckModal('ATTACK')" class="relative bg-rose-950/80 border border-rose-500/50 hover:bg-rose-900 rounded-lg p-2 flex flex-col items-center justify-center h-full transition group">
+                        <span class="text-lg">⚔️</span>
+                        <span id="deck-cnt-atk" class="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">5</span>
+                    </button>
+                    <button onclick="openDeckModal('DEFENSE')" class="relative bg-blue-950/80 border border-blue-500/50 hover:bg-blue-900 rounded-lg p-2 flex flex-col items-center justify-center h-full transition group">
+                        <span class="text-lg">🛡️</span>
+                        <span id="deck-cnt-def" class="absolute -top-1 -right-1 bg-blue-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">5</span>
+                    </button>
+                    <button onclick="openDeckModal('MOVE')" class="relative bg-amber-950/80 border border-amber-500/50 hover:bg-amber-900 rounded-lg p-2 flex flex-col items-center justify-center h-full transition group">
+                        <span class="text-lg">👟</span>
+                        <span id="deck-cnt-mov" class="absolute -top-1 -right-1 bg-amber-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">5</span>
+                    </button>
+                </div>
+
+                <!-- Hand Cards -->
+                <div class="flex-1 bg-slate-900 border border-slate-800 rounded-xl p-3 shadow-md flex flex-col gap-2">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="font-bold text-slate-300">✋ 현재 손패 (클릭하여 큐에 등록)</span>
+                        <span id="target-prompt" class="font-bold text-amber-400 hidden animate-pulse bg-amber-900/40 px-2 rounded">타겟을 클릭하세요!</span>
+                    </div>
+                    <div id="hand-container" class="flex gap-3 justify-center h-28 items-center">
+                        <!-- Hand Cards Injected Here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Action Queue -->
+            <section class="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 shadow-md flex flex-col gap-2">
+                <div class="flex justify-between items-center text-xs">
+                    <span class="font-bold text-slate-300">📥 행동 큐 <span class="font-normal text-slate-500">(클릭 시 취소)</span></span>
+                    <button onclick="clearQueue()" class="bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded border border-slate-600 transition">전체 취소</button>
+                </div>
+                <div id="action-queue" class="flex flex-wrap items-center gap-2 min-h-[44px] bg-slate-950 rounded-lg p-2 border border-slate-800">
+                    <!-- Queue Injected Here -->
+                </div>
+            </section>
+        </div>
+
+        <div class="flex flex-col gap-4 w-full lg:w-1/3">
+            
+            <!-- Info Panel -->
+            <section class="flex-1 bg-slate-900 border border-indigo-500/30 rounded-xl p-5 shadow-lg flex flex-col">
+                <h3 class="text-sm font-bold text-indigo-300 border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">
+                    <span>🔍</span> 세부 정보 패널
+                </h3>
+                <div id="info-panel-content" class="flex-1 flex flex-col text-sm text-slate-300">
+                    <div class="h-full flex flex-col items-center justify-center text-center text-slate-500 italic space-y-2 opacity-60">
+                        <span class="text-3xl">👆</span>
+                        <p>카드를 호버하거나 클릭하면<br>상세 정보와 <b>공격 범위</b>가<br>표시됩니다.</p>
+                        <p class="text-[10px] mt-2 text-amber-500/70">*족보 확정 전에도 확인 가능합니다.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Status Logs & Battle Start -->
+            <section class="h-40 bg-slate-900 border border-slate-800 rounded-xl flex flex-col shadow-md overflow-hidden shrink-0">
+                <div class="flex-1 p-2 text-[11px] font-mono overflow-y-auto text-slate-400 flex flex-col gap-1 bg-slate-950" id="log-box">
+                    <div>[시스템] 스테이지 1 전투 준비 완료.</div>
+                </div>
+                <button id="btn-start" onclick="startBattlePhase()" disabled class="w-full h-12 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-black text-sm transition">
+                    ⚔️ 배틀 시작
+                </button>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- Poker Confirm Big Text Layer -->
+    <div id="poker-anim-layer" class="fixed inset-0 pointer-events-none z-50 flex items-center justify-center overflow-hidden">
+        <div id="poker-anim-text" class="text-5xl md:text-7xl font-black text-center whitespace-nowrap opacity-0 filter drop-shadow-[0_0_20px_rgba(0,0,0,0.8)]">
+            <!-- Text Injected -->
+        </div>
+    </div>
+
+    <!-- Deck View Modal -->
+    <div id="modal-deck" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl relative">
+            <button onclick="closeDeckModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl">✖</button>
+            <div class="p-4 border-b border-slate-800">
+                <h2 id="deck-modal-title" class="text-xl font-bold">덱 정보</h2>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1 flex flex-col gap-6">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-300 mb-2 border-b border-slate-800 pb-1">남은 덱 (Draw Pile)</h3>
+                    <div id="modal-draw-pile" class="flex flex-wrap gap-2"></div>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold text-slate-500 mb-2 border-b border-slate-800 pb-1">버린 패 (Discard Pile)</h3>
+                    <div id="modal-discard-pile" class="flex flex-wrap gap-2 opacity-70"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- End Game Modal -->
+    <div id="modal-end" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border border-amber-500/50 rounded-2xl p-8 text-center max-w-sm w-full shadow-[0_0_100px_rgba(245,158,11,0.2)]">
+            <div id="end-icon" class="text-6xl mb-4">🏆</div>
+            <h2 id="end-title" class="text-3xl font-black text-amber-400 mb-6">승리!</h2>
+            <button onclick="nextStage()" id="end-btn" class="w-full bg-amber-600 hover:bg-amber-500 text-slate-900 font-bold py-3 rounded-xl transition">다음 스테이지</button>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA DEFINITIONS ---
+        const SUITS = ['♠', '♥', '♦', '♣'];
+        const S_COLOR = { '♠': 'text-slate-300', '♥': 'text-rose-500', '♦': 'text-rose-500', '♣': 'text-slate-300' };
+        const VALUES = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+
+        const RARITY = {
+            N: { id: 'N', name: '일반', c: 'bg-slate-700 text-slate-300', tc: 'rarity-text-N' },
+            R: { id: 'R', name: '희귀', c: 'bg-blue-900 text-blue-300', tc: 'rarity-text-R' },
+            E: { id: 'E', name: '고급', c: 'bg-purple-900 text-purple-300', tc: 'rarity-text-E' },
+            L: { id: 'L', name: '전설', c: 'bg-amber-900 text-amber-300', tc: 'rarity-text-L' }
+        };
+
+        const HANDS = {
+            RF: { n: "로열 플러시", m: 5.0, rar: RARITY.L }, SF: { n: "스트레이트 플러시", m: 4.0, rar: RARITY.L },
+            FK: { n: "포카드", m: 3.2, rar: RARITY.L }, FH: { n: "풀하우스", m: 2.5, rar: RARITY.E },
+            FL: { n: "플러시", m: 2.0, rar: RARITY.E }, ST: { n: "스트레이트", m: 1.7, rar: RARITY.E },
+            TK: { n: "트리플", m: 1.5, rar: RARITY.R }, TP: { n: "투페어", m: 1.3, rar: RARITY.R },
+            OP: { n: "원페어", m: 1.15, rar: RARITY.N }, HC: { n: "하이 카드", m: 1.0, rar: RARITY.N }
+        };
+
+        const DB_CARDS = {
+            ATK_ST: {
+                id: 'atk_st', type: 'ATTACK', name: '직선 베기', icon: '⚔️', ap: 1, theme: 'card-atk',
+                desc: '전방 2칸을 공격합니다.',
+                calcDmg: (m) => Math.round(10 + m),
+                getRange: (p, isLeg) => {
+                    if (isLeg) return [{x:3,y:0},{x:4,y:0},{x:5,y:0},{x:3,y:1},{x:4,y:1},{x:5,y:1},{x:3,y:2},{x:4,y:2},{x:5,y:2}];
+                    let r=[]; if(p.x+1<=5) r.push({x:p.x+1, y:p.y}); if(p.x+2<=5) r.push({x:p.x+2, y:p.y}); return r;
+                },
+                infoHtml: (dmg, isLeg) => `<div class="bg-slate-950 p-2 rounded border border-rose-900 mt-2"><span class="text-rose-400 block mb-1">예상 피해: <b>${isLeg?'전체':dmg}</b></span><span class="text-[11px] text-slate-400">범위: ${isLeg?'적 진영 전체':'전방 2칸'}</span></div>`
+            },
+            ATK_CR: {
+                id: 'atk_cr', type: 'ATTACK', name: '십자 베기', icon: '⚔️', ap: 2, theme: 'card-atk',
+                desc: '적 진영 중앙(십자)을 공격합니다.',
+                calcDmg: (m) => Math.round(5 + 2*m),
+                getRange: (p, isLeg) => isLeg ? [{x:3,y:0},{x:4,y:0},{x:5,y:0},{x:3,y:1},{x:4,y:1},{x:5,y:1},{x:3,y:2},{x:4,y:2},{x:5,y:2}] : [{x:4,y:0},{x:3,y:1},{x:4,y:1},{x:5,y:1},{x:4,y:2}],
+                infoHtml: (dmg, isLeg) => `<div class="bg-slate-950 p-2 rounded border border-rose-900 mt-2"><span class="text-rose-400 block mb-1">예상 피해: <b>${isLeg?'전체':dmg}</b></span><span class="text-[11px] text-slate-400">범위: ${isLeg?'적 진영 전체':'적 중앙 십자'}</span></div>`
+            },
+            DEF_SH: {
+                id: 'def_sh', type: 'DEFENSE', name: '방어도 얻기', icon: '🛡️', ap: 1, theme: 'card-def',
+                desc: '해당 턴에 방어도를 얻습니다.',
+                calcSh: (m) => Math.round(5 * m),
+                getRange: () => [],
+                infoHtml: (sh, isLeg) => `<div class="bg-slate-950 p-2 rounded border border-blue-900 mt-2"><span class="text-blue-400 block mb-1">방어도 증가: <b>${isLeg?'무적(999)':sh}</b></span><span class="text-[11px] text-slate-400">*적 행동 1회 후 사라짐</span></div>`
+            },
+            MOV_B: {
+                id: 'mov_b', type: 'MOVE', name: '기본 이동', icon: '👟', ap: 1, theme: 'card-mov', needsTarget: true,
+                desc: '아군 진영 인접한 1칸으로 이동합니다.',
+                getRange: (p, isLeg) => {
+                    let r=[]; for(let x=0;x<=2;x++){ for(let y=0;y<=2;y++){ if(isLeg || (Math.abs(p.x-x)+Math.abs(p.y-y)===1)) r.push({x,y}); } } return r;
+                },
+                infoHtml: (v, isLeg) => `<div class="bg-slate-950 p-2 rounded border border-amber-900 mt-2"><span class="text-amber-400 block mb-1">이동 가능 거리</span><span class="text-[11px] text-slate-400">${isLeg?'아군 진영 내 텔레포트':'상하좌우 1칸'}</span></div>`
+            }
+        };
+
+        // --- GAME STATE ---
+        let G = {
+            phase: 'POKER', // POKER -> BATTLE_PREP -> BATTLE_EXEC
+            stage: 1, ap: 3, maxAp: 3,
+            poker: { deck: [], hand: [], rank: HANDS.HC, locked: false, draws: 0 },
+            p: { x: 1, y: 1, hp: 50, maxHp: 50, sh: 0 },
+            e: { x: 4, y: 1, hp: 30, maxHp: 30, sh: 0, intents: [] },
+            decks: {
+                ATTACK: { draw: [], disc: [] },
+                DEFENSE: { draw: [], disc: [] },
+                MOVE: { draw: [], disc: [] }
+            },
+            hand: [], queue: [],
+            targetModeCard: null
+        };
+
+        function buildInitialDecks() {
+            let makeCard = (baseObj, id) => ({...baseObj, uid: id+'_'+Math.random().toString(36).substr(2,5)});
+            G.decks.ATTACK.draw = Array.from({length:4}, ()=>makeCard(DB_CARDS.ATK_ST, 'A1')).concat(Array.from({length:2}, ()=>makeCard(DB_CARDS.ATK_CR, 'A2'))).sort(()=>Math.random()-0.5);
+            G.decks.DEFENSE.draw = Array.from({length:6}, ()=>makeCard(DB_CARDS.DEF_SH, 'D1')).sort(()=>Math.random()-0.5);
+            G.decks.MOVE.draw = Array.from({length:6}, ()=>makeCard(DB_CARDS.MOV_B, 'M1')).sort(()=>Math.random()-0.5);
+            ['ATTACK', 'DEFENSE', 'MOVE'].forEach(t => G.decks[t].disc = []);
+        }
+
+        function drawCard(type) {
+            let deck = G.decks[type];
+            if (deck.draw.length === 0) {
+                if (deck.disc.length === 0) return null; // Complete empty
+                deck.draw = deck.disc.sort(()=>Math.random()-0.5);
+                deck.disc = [];
+                log(`[시스템] ${type} 덱 셔플 완료`);
+            }
+            return deck.draw.pop();
+        }
+
+        function initTurn() {
+            G.phase = 'POKER'; G.ap = G.maxAp; G.queue = []; G.targetModeCard = null; G.p.sh = 0; G.e.sh = 0;
+            
+            // Poker Setup
+            G.poker.locked = false; G.poker.draws = 0;
+            let d=[]; SUITS.forEach(s=>VALUES.forEach((v,i)=>d.push({s,v,n:i+2}))); G.poker.deck = d.sort(()=>Math.random()-0.5);
+            G.poker.hand = Array.from({length:5}, ()=>G.poker.deck.pop());
+            evalPoker();
+
+            // Hand Setup (Draw exactly 1 of each)
+            if(!G.decks.ATTACK.draw.length && !G.decks.ATTACK.disc.length) buildInitialDecks(); // safety
+            G.hand = [];
+            let atk = drawCard('ATTACK'); if(atk) G.hand.push(atk);
+            let def = drawCard('DEFENSE'); if(def) G.hand.push(def);
+            let mov = drawCard('MOVE'); if(mov) G.hand.push(mov);
+
+            planEnemy();
+            renderAll();
+        }
+
+        function evalPoker() {
+            let c = G.poker.hand;
+            let vals = c.map(x=>x.n).sort((a,b)=>a-b);
+            let isFl = c.every(x=>x.s === c[0].s);
+            let isSt = (vals[4]-vals[0]===4 && new Set(vals).size===5) || (vals.join(',')==='2,3,4,5,14');
+            let cnt = {}; vals.forEach(v=>cnt[v]=(cnt[v]||0)+1);
+            let f = Object.values(cnt).sort((a,b)=>b-a);
+            
+            if(isSt && isFl) G.poker.rank = vals.includes(14) && vals.includes(13) ? HANDS.RF : HANDS.SF;
+            else if(f[0]===4) G.poker.rank = HANDS.FK; else if(f[0]===3 && f[1]===2) G.poker.rank = HANDS.FH;
+            else if(isFl) G.poker.rank = HANDS.FL; else if(isSt) G.poker.rank = HANDS.ST;
+            else if(f[0]===3) G.poker.rank = HANDS.TK; else if(f[0]===2 && f[1]===2) G.poker.rank = HANDS.TP;
+            else if(f[0]===2) G.poker.rank = HANDS.OP; else G.poker.rank = HANDS.HC;
+        }
+
+        function planEnemy() {
+            G.e.intents = [];
+            let simX = G.e.x, simY = G.e.y;
+            
+            // Generate multiple intents based on stage
+            let acts = G.stage > 1 ? 2 : 1;
+            
+            for(let i=0; i<acts; i++) {
+                if (G.e.hp < G.e.maxHp * 0.4 && Math.random() < 0.4) {
+                    G.e.intents.push({ t: 'DEF', val: 5+G.stage*3, desc: `방어도(+${5+G.stage*3})` });
+                } else if (simY !== G.p.y && Math.random() < 0.8) {
+                    let dir = G.p.y > simY ? 1 : -1;
+                    G.e.intents.push({ t: 'MOVE', dy: dir, desc: `이동(${dir>0?'하':'상'} 1칸)` });
+                    simY += dir; // Update simulated position for next intent calc
+                } else {
+                    let dmg = 8+G.stage*2;
+                    let targetTiles = [{x: G.p.x, y: simY}]; // Attacks its own row normally
+                    G.e.intents.push({ t: 'ATK', dmg, rng: targetTiles, desc: `공격(${dmg})` });
+                }
+            }
+        }
+
+        function lockPoker() {
+            G.poker.locked = true; G.phase = 'BATTLE_PREP';
+            renderPoker(); 
+            
+            // Play Animation
+            let animLayer = document.getElementById('poker-anim-layer');
+            let textDiv = document.getElementById('poker-anim-text');
+            textDiv.innerHTML = `<span class="${G.poker.rank.rar.c.split(' ')[1]} drop-shadow-xl">${G.poker.rank.n}</span> <span class="text-3xl text-slate-300">(${G.poker.rank.rar.name})</span>`;
+            
+            textDiv.classList.remove('anim-poker-confirm');
+            void textDiv.offsetWidth; // trigger reflow
+            textDiv.classList.add('anim-poker-confirm');
+            
+            setTimeout(() => {
+                renderAll(); // Re-render hand to apply rarity colors
+            }, 500); // Remove blur after a tiny delay
+        }
+
+        function redrawPokerCard() {
+            if(G.ap < 1 || G.poker.draws >= 2 || G.poker.locked) return;
+            G.ap--; G.poker.draws++;
+            G.poker.hand.push(G.poker.deck.pop());
+            evalPoker(); renderPoker(); document.getElementById('ap-display').textContent = `${G.ap}/${G.maxAp}`;
+        }
+
+        function clickHandCard(idx) {
+            if(!G.poker.locked) { log("족보를 먼저 확정하세요."); return; }
+            let c = G.hand[idx];
+            if(G.queue.find(q=>q.uid === c.uid)) return;
+            
+            let isLeg = G.poker.rank.rar === RARITY.L;
+            let cost = isLeg ? 1 : c.ap;
+            if(G.ap < cost) { log("AP가 부족합니다."); return; }
+
+            if(c.needsTarget) {
+                G.targetModeCard = c;
+                renderGrid();
+                document.getElementById('target-prompt').classList.remove('hidden');
+                return;
+            }
+            queueCard(c, cost, null);
+        }
+
+        function queueCard(c, cost, tgt) {
+            G.ap -= cost; G.queue.push({...c, cost, tgt});
+            G.targetModeCard = null; document.getElementById('target-prompt').classList.add('hidden');
+            renderAll();
+        }
+
+        function clearQueue() {
+            G.queue.forEach(q => G.ap += q.cost); G.queue = []; G.targetModeCard = null;
+            document.getElementById('target-prompt').classList.add('hidden'); renderAll();
+        }
+        function removeQueue(idx) { G.ap += G.queue[idx].cost; G.queue.splice(idx, 1); renderAll(); }
+
+        function renderAll() {
+            document.getElementById('stage-num').textContent = `1-${G.stage}`;
+            document.getElementById('ap-display').textContent = `${G.ap}/${G.maxAp}`;
+            
+            let gridEl = document.getElementById('battle-grid');
+            let pokerUI = document.getElementById('poker-ui-overlay');
+            if(G.phase === 'POKER') {
+                gridEl.classList.add('blur-grid'); pokerUI.classList.remove('hidden'); renderPoker();
+            } else {
+                gridEl.classList.remove('blur-grid'); pokerUI.classList.add('hidden');
+            }
+            
+            renderHand(); renderQueue(); renderGrid(); renderDecksCounters();
+            document.getElementById('btn-start').disabled = (G.phase !== 'BATTLE_PREP' || G.queue.length === 0);
+        }
+
+        function renderPoker() {
+            let pc = document.getElementById('poker-cards'); pc.innerHTML = '';
+            G.poker.hand.forEach(c => {
+                pc.innerHTML += `<div class="w-10 h-14 bg-slate-100 rounded flex flex-col justify-between p-1.5 font-bold ${S_COLOR[c.s]} shadow text-sm border border-slate-300"><div class="leading-none text-left">${c.v}</div><div class="text-center text-lg leading-none">${c.s}</div></div>`;
+            });
+            document.getElementById('poker-rank').textContent = G.poker.rank.n;
+            let rb = document.getElementById('poker-rarity');
+            rb.textContent = G.poker.rank.rar.name; rb.className = `text-[10px] px-2 py-0.5 rounded font-bold border border-current ${G.poker.rank.rar.c}`;
+            document.getElementById('poker-mult').textContent = `효율 배율: x${G.poker.rank.m.toFixed(2)}`;
+            
+            let btnL = document.getElementById('btn-lock'), btnR = document.getElementById('btn-redraw');
+            btnR.disabled = (G.poker.draws >= 2 || G.ap < 1);
+            document.getElementById('redraw-count').textContent = `(${G.poker.draws}/2)`;
+        }
+
+        function renderHand() {
+            let hc = document.getElementById('hand-container'); hc.innerHTML = '';
+            let isLeg = G.poker.locked && G.poker.rank.rar === RARITY.L;
+            
+            G.hand.forEach((c, i) => {
+                let isQ = G.queue.find(q=>q.uid === c.uid);
+                let cost = isLeg ? 1 : c.ap;
+                let noAp = G.ap < cost;
+                let rarityClass = G.poker.locked ? G.poker.rank.rar.tc : '';
+                
+                let st = isQ ? 'opacity-30 cursor-default grayscale' : (noAp && G.phase==='BATTLE_PREP' ? 'opacity-50 cursor-not-allowed' : 'hover:-translate-y-1 hover:shadow-xl cursor-pointer');
+                
+                let el = document.createElement('div');
+                el.className = `w-20 h-28 border rounded-xl p-2 flex flex-col items-center justify-between transition-all ${c.theme} ${st} relative overflow-hidden`;
+                el.innerHTML = `
+                    <div class="text-2xl mt-1">${c.icon}</div>
+                    <div class="text-[10px] font-black text-center leading-tight z-10 w-full ${rarityClass}">${c.name}</div>
+                    <div class="text-[9px] bg-black/20 text-current font-mono px-2 py-0.5 rounded-full border border-current/30 z-10">${cost} AP</div>
+                `;
+                if(!isQ && !noAp && G.phase==='BATTLE_PREP') el.onclick = () => clickHandCard(i);
+                el.onmouseenter = () => hoverCard(c);
+                el.onmouseleave = () => { if(G.targetModeCard !== c) hoverCard(null); };
+                hc.appendChild(el);
+            });
+        }
+
+        function renderQueue() {
+            let qc = document.getElementById('action-queue'); qc.innerHTML = '';
+            if(G.queue.length === 0) { qc.innerHTML = `<span class="text-xs text-slate-500 italic">큐가 비어있습니다.</span>`; return; }
+            G.queue.forEach((q, i) => {
+                let el = document.createElement('div');
+                el.className = `${q.theme} px-2 py-1.5 rounded shadow text-xs font-bold flex items-center gap-1 cursor-pointer transition hover:scale-105`;
+                el.innerHTML = `<span>${q.icon}</span> <span>${q.name}</span> ${q.tgt ? '🎯' : ''}`;
+                el.onclick = () => removeQueue(i);
+                el.onmouseenter = () => hoverCard(q);
+                el.onmouseleave = () => hoverCard(null);
+                qc.appendChild(el);
+            });
+        }
+
+        function hoverCard(c) {
+            let el = document.getElementById('info-panel-content');
+            document.querySelectorAll('.tile').forEach(t=>t.classList.remove('tile-atk-range', 'tile-move-range'));
+            
+            if(!c) { el.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-center text-slate-500 italic space-y-2 opacity-60"><span class="text-3xl">👆</span><p>카드를 호버하거나 클릭하면<br>상세 정보와 <b>공격 범위</b>가<br>표시됩니다.</p></div>`; return; }
+            
+            let isLeg = G.poker.locked && G.poker.rank.rar === RARITY.L;
+            let mult = G.poker.locked ? G.poker.rank.m : 1.0; // Preview with 1.0 if not locked, or apply current? Requirements say "족보 확정전에도 활용가능". Show base stats if not locked.
+            
+            let dyn = c.type === 'ATTACK' ? c.infoHtml(c.calcDmg(mult), isLeg) : c.type === 'DEFENSE' ? c.infoHtml(c.calcSh(mult), isLeg) : c.infoHtml(null, isLeg);
+            
+            el.innerHTML = `
+                <div class="flex items-center gap-3 border-b border-slate-700 pb-3 mb-3">
+                    <div class="text-4xl bg-slate-800 p-2 rounded-xl">${c.icon}</div>
+                    <div>
+                        <div class="text-lg font-black text-white ${G.poker.locked ? G.poker.rank.rar.tc : ''}">${c.name}</div>
+                        <div class="flex gap-2 mt-1 font-mono text-[10px]">
+                            <span class="bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded">${c.type}</span>
+                            <span class="bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded">${isLeg?1:c.ap} AP</span>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-sm text-slate-400 leading-relaxed">${c.desc}</p>
+                ${dyn}
+            `;
+
+            // Draw Range on Grid
+            let rArr = c.getRange(G.p, isLeg);
+            rArr.forEach(r => {
+                let cell = document.getElementById(`t_${r.x}_y${r.y}`);
+                if(cell) cell.classList.add(c.type==='MOVE' ? 'tile-move-range' : 'tile-atk-range');
+            });
+        }
+
+        function renderGrid() {
+            let bg = document.getElementById('battle-grid'); bg.innerHTML = '';
+            
+            // Build Tiles
+            for(let y=0; y<=2; y++) {
+                for(let x=0; x<=5; x++) {
+                    let isP = x <= 2;
+                    let t = document.createElement('div');
+                    t.id = `t_${x}_y${y}`;
+                    t.className = `tile ${isP ? 'tile-player-zone' : 'tile-enemy-zone'}`;
+                    
+                    if(G.p.x === x && G.p.y === y) {
+                        t.innerHTML += `<div class="text-4xl relative z-20">🧙‍♂️</div>`;
+                        t.innerHTML += `<div class="absolute -top-3 left-1/2 -translate-x-1/2 z-30 bg-slate-900 border border-blue-500 rounded px-1 flex flex-col items-center gap-0.5 shadow-lg"><div class="w-8 h-1 bg-slate-700 rounded-full mt-1"><div class="bg-blue-400 h-full" style="width:${(G.p.hp/G.p.maxHp)*100}%"></div></div>${G.p.sh>0 ? `<span class="text-[9px] text-cyan-300">🛡️${G.p.sh}</span>` : ''}</div>`;
+                    }
+                    if(G.e.x === x && G.e.y === y) {
+                        t.innerHTML += `<div class="text-4xl relative z-20">${G.stage===1?'👹':(G.stage===2?'💀':'🐉')}</div>`;
+                        let intentText = G.e.intents.map(i=>i.desc).join(' ➔ ') || '대기';
+                        t.innerHTML += `<div class="absolute -top-6 left-1/2 -translate-x-1/2 z-30 bg-slate-950/90 border border-rose-500 rounded px-2 py-0.5 whitespace-nowrap shadow-lg flex flex-col items-center">
+                            <span class="text-[9px] font-bold text-amber-400 mb-0.5">${intentText}</span>
+                            <div class="flex items-center gap-1 w-full"><div class="w-8 h-1 bg-slate-700 rounded-full"><div class="bg-rose-500 h-full" style="width:${(G.e.hp/G.e.maxHp)*100}%"></div></div>${G.e.sh>0 ? `<span class="text-[9px] text-cyan-300">🛡️${G.e.sh}</span>` : ''}</div>
+                        </div>`;
+                    }
+                    
+                    if (G.targetModeCard) t.onclick = () => {
+                        let isLeg = G.poker.locked && G.poker.rank.rar === RARITY.L;
+                        if(G.targetModeCard.getRange(G.p, isLeg).some(r=>r.x===x && r.y===y)) queueCard(G.targetModeCard, isLeg?1:G.targetModeCard.ap, {x,y});
+                    };
+                    
+                    bg.appendChild(t);
+                }
+            }
+
+            // Draw SVG Intents (Arrows & Red Danger Zones)
+            drawIntents();
+            
+            // Restore hover highlights if active
+            if(G.targetModeCard) hoverCard(G.targetModeCard);
+        }
+
+        function drawIntents() {
+            let svgPaths = document.getElementById('svg-paths'); svgPaths.innerHTML = '';
+            
+            // Reset danger tiles
+            document.querySelectorAll('.tile').forEach(t=>t.classList.remove('tile-enemy-danger'));
+
+            if(G.phase !== 'POKER' && G.phase !== 'BATTLE_PREP') return;
+
+            let currentEx = G.e.x, currentEy = G.e.y;
+            
+            // Calc Tile Center helper
+            const getTileCenter = (x, y) => {
+                return { cx: (x * 16.666) + 8.333, cy: (y * 33.333) + 16.666 };
+            };
+
+            G.e.intents.forEach(intent => {
+                if (intent.t === 'MOVE') {
+                    let nextY = currentEy + intent.dy;
+                    let p1 = getTileCenter(currentEx, currentEy);
+                    let p2 = getTileCenter(currentEx, nextY);
+                    
+                    let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", `${p1.cx}%`); line.setAttribute("y1", `${p1.cy}%`);
+                    line.setAttribute("x2", `${p2.cx}%`); line.setAttribute("y2", `${p2.cy}%`);
+                    line.setAttribute("stroke", "#fbbf24"); line.setAttribute("stroke-width", "2");
+                    line.setAttribute("class", "intent-path"); line.setAttribute("marker-end", "url(#arrowhead)");
+                    svgPaths.appendChild(line);
+                    
+                    currentEy = nextY; // Update simulated pos
+                } else if (intent.t === 'ATK') {
+                    intent.rng.forEach(r => {
+                        let cell = document.getElementById(`t_${r.x}_y${r.y}`);
+                        if(cell) cell.classList.add('tile-enemy-danger');
+                    });
+                }
+            });
+        }
+
+        function renderDecksCounters() {
+            document.getElementById('deck-cnt-atk').textContent = G.decks.ATTACK.draw.length;
+            document.getElementById('deck-cnt-def').textContent = G.decks.DEFENSE.draw.length;
+            document.getElementById('deck-cnt-mov').textContent = G.decks.MOVE.draw.length;
+        }
+
+        function openDeckModal(type) {
+            let m = document.getElementById('modal-deck');
+            document.getElementById('deck-modal-title').textContent = `${type} 덱 정보`;
+            
+            let drawC = document.getElementById('modal-draw-pile'); drawC.innerHTML = '';
+            let discC = document.getElementById('modal-discard-pile'); discC.innerHTML = '';
+            
+            let renderCard = (c, container) => {
+                let el = document.createElement('div');
+                el.className = `w-16 h-24 border rounded shadow-sm p-1 flex flex-col items-center justify-between text-xs ${c.theme}`;
+                el.innerHTML = `<div class="text-xl">${c.icon}</div><div class="text-[9px] font-bold text-center leading-tight break-keep w-full text-current">${c.name}</div>`;
+                container.appendChild(el);
+            };
+
+            G.decks[type].draw.forEach(c => renderCard(c, drawC));
+            G.decks[type].disc.forEach(c => renderCard(c, discC));
+            if(!G.decks[type].draw.length) drawC.innerHTML = '<span class="text-slate-500 text-xs">없음</span>';
+            if(!G.decks[type].disc.length) discC.innerHTML = '<span class="text-slate-500 text-xs">없음</span>';
+
+            m.classList.remove('hidden'); m.classList.add('flex');
+        }
+        function closeDeckModal() { document.getElementById('modal-deck').classList.add('hidden'); document.getElementById('modal-deck').classList.remove('flex'); }
+        document.getElementById('modal-deck').addEventListener('click', (e) => { if(e.target.id==='modal-deck') closeDeckModal(); });
+
+        function log(msg) {
+            let lb = document.getElementById('log-box');
+            lb.innerHTML += `<div>${msg}</div>`;
+            lb.scrollTop = lb.scrollHeight;
+        }
+
+        async function startBattlePhase() {
+            G.phase = 'BATTLE_EXEC';
+            document.getElementById('btn-start').disabled = true;
+            hoverCard(null); renderAll();
+            log("--- ⚔️ 전투 개시 ---");
+            
+            // Move hands to discard immediately (used or not, hand empties)
+            G.hand.forEach(c => G.decks[c.type].disc.push(c));
+            G.hand = [];
+
+            let isLeg = G.poker.rank.rar === RARITY.L;
+            let m = G.poker.rank.m;
+            let pQ = [...G.queue]; let eQ = [...G.e.intents];
+            
+            // Remove SVG arrows during execution
+            document.getElementById('svg-paths').innerHTML = '';
+
+            while (pQ.length > 0 || eQ.length > 0) {
+                if(G.p.hp <= 0 || G.e.hp <= 0) break;
+
+                // Player Action
+                if (pQ.length > 0) {
+                    let act = pQ.shift();
+                    log(`[용사] ${act.name} 사용`);
+                    if (act.type === 'MOVE') {
+                        G.p.x = act.tgt.x; G.p.y = act.tgt.y;
+                    } else if (act.type === 'DEFENSE') {
+                        G.p.sh += (isLeg ? 999 : act.calcSh(m));
+                    } else if (act.type === 'ATTACK') {
+                        let rng = act.getRange(G.p, isLeg);
+                        let hit = isLeg || rng.some(r => r.x === G.e.x && r.y === G.e.y);
+                        if (hit) applyDmg(G.e, act.calcDmg(m), `t_${G.e.x}_y${G.e.y}`, isLeg);
+                        else log(`💨 공격 빗나감`);
+                    }
+                    renderGrid(); await new Promise(r=>setTimeout(r, 600));
+                }
+                
+                if(G.e.hp <= 0) break;
+
+                // Enemy Action
+                if (eQ.length > 0) {
+                    let ea = eQ.shift();
+                    log(`[적군] ${ea.desc}`);
+                    if(ea.t === 'MOVE') { G.e.y += ea.dy; }
+                    else if(ea.t === 'DEF') { G.e.sh += ea.val; }
+                    else if(ea.t === 'ATK') {
+                        if(ea.rng.some(r=>r.x===G.p.x && r.y===G.p.y)) applyDmg(G.p, ea.dmg, `t_${G.p.x}_y${G.p.y}`, false);
+                        else log(`💨 적 공격 빗나감`);
+                    }
+                    if(G.p.sh > 0) { G.p.sh = 0; log(`🛡️ 적 행동 종료로 방어도 초기화`); }
+                    renderGrid(); await new Promise(r=>setTimeout(r, 600));
+                }
+            }
+
+            if(G.e.hp <= 0) {
+                document.getElementById('modal-end').classList.remove('hidden'); document.getElementById('modal-end').classList.add('flex');
+                document.getElementById('end-title').textContent = "스테이지 클리어!"; document.getElementById('end-title').className = "text-3xl font-black text-amber-400 mb-6";
+                document.getElementById('end-btn').textContent = "다음 스테이지";
+            } else if (G.p.hp <= 0) {
+                document.getElementById('modal-end').classList.remove('hidden'); document.getElementById('modal-end').classList.add('flex');
+                document.getElementById('end-title').textContent = "사망하였습니다..."; document.getElementById('end-title').className = "text-3xl font-black text-rose-500 mb-6";
+                document.getElementById('end-btn').textContent = "재시작"; G.stage = 0;
+            } else {
+                initTurn();
+            }
+        }
+
+        function applyDmg(tgt, amt, tId, ignSh) {
+            document.body.classList.add('shake'); setTimeout(()=>document.body.classList.remove('shake'), 300);
+            let real = amt;
+            if(!ignSh && tgt.sh>0) { if(tgt.sh>=real){ tgt.sh-=real; real=0; }else{ real-=tgt.sh; tgt.sh=0; } }
+            tgt.hp = Math.max(0, tgt.hp - real);
+            
+            let cell = document.getElementById(tId);
+            if(cell) {
+                let d = document.createElement('div'); d.className = 'dmg-text text-rose-500 text-2xl left-1/2 -translate-x-1/2 top-1/4'; d.textContent = `-${amt}`;
+                cell.appendChild(d); setTimeout(()=>d.remove(), 800);
+            }
+        }
+
+        function nextStage() {
+            let m = document.getElementById('modal-end'); m.classList.add('hidden'); m.classList.remove('flex');
+            G.stage++; G.p.hp = G.p.maxHp; G.e.maxHp = 30 + (G.stage-1)*15; G.e.hp = G.e.maxHp;
+            G.p.x = 1; G.p.y = 1; G.e.x = 4; G.e.y = 1;
+            initTurn();
+        }
+
+        window.onload = initTurn;
+    </script>
+</body>
+</html>
